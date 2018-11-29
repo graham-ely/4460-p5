@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8"/>
+    <script type="text/javascript" src="d3.js"></script>      
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script type="text/javascript" src="http://d3js.org/topojson.v1.min.js"></script>
+    <script type="text/javascript" src="http://datamaps.github.io/scripts/0.4.0/datamaps.world.min.js?v=1"></script>
+    <style>
+    body {
+      font: 12px sans-serif;
+      text-align:center;
+    }
+    .tick > line {
+        fill: none;
+        stroke: black;
+    }
+    .tick > text {
+        fill: black;
+    }
+    .selected {
+        stroke: red;
+        fill:red;
+    }
+    .selected2 {
+        stroke: orange;
+        fill:orange;
+    }
+    path.domain {
+        fill: none;
+        stroke-width: 2px;
+        stroke: black;
+    }
+    #wrapper {
+        clear:both;
+    }
+    #incident_map {
+        float:left;
+	height:550px;
+	width:500px;
+    }
+    #incident_title {
+	text-align:"center";
+	width:"100%";
+    }
+    #chart2{
+        float:left;
+    }
+    #chart3 {
+        float:left;
+        margin-top: 30px;
+        margin-left: 20px;
+    }
+    .brush .extent {
+        fill-opacity: .1;
+        stroke: #fff;
+        shape-rendering: crispEdges;
+    }
+
+    </style>
+
+   </head>
+   <body>
+   <div id="wrapper">
+      <div id="incident_map">
+	<h1 id="incident_title">Aircraft Incidents by Country</h1>
+           </div>
+      <div id="chart2">
+          </div>
+      <div id="chart3">
+          </div>
+   </div>
+  <script>
+   
+    /*
+        ID  - Accident Number
+        CC  - Country Code
+        ED  - Event Date
+        TFI - Total Fatal Injuries
+        TSI - Total Serious Injuries
+        TUI - Total Uninjured
+     */
+    d3.csv("aircraft_incidents.csv", function(csv) {
+        for (var i=0; i<csv.length; ++i) {
+            csv[i].ID  = String(csv[i].Accident_Number);
+            csv[i].CC  = String(csv[i].Country_Code);
+            csv[i].ED  = new Date(csv[i].Event_Date);
+            csv[i].TFI = Number(csv[i].Total_Fatal_Injuries);
+            csv[i].TSI = Number(csv[i].Total_Serious_Injuries);
+            csv[i].TUI = Number(csv[i].Total_Uninjured);
+        }
+
+        // Calculate accidents by country
+        var country_counts = d3.nest().key( function(d) {
+            return d.CC; })
+        .rollup( function( leaves ){
+            return d3.sum( leaves, function(d) {
+                return 1; 
+            });
+        }).entries( csv )
+        .map( function(d) {
+            return { CC: d.key, Count: d.values };
+        });
+
+
+        // Datamaps expect data in format:
+        // { "USA": { "fillColor": "#42a844", numberOfWhatever: 75},
+        //   "FRA": { "fillColor": "#8dc386", numberOfWhatever: 43 } }
+        var dataset    = {};
+        var onlyValues = country_counts.map(function(obj){ return obj["Count"]; });
+        var minValue   = Math.min.apply(null, onlyValues);
+
+	// Remove outlier USA so that the color scale looks normal
+	var j = 500;
+	var k = 0;
+
+	// kinda hacky sorry :(
+	for( var i = 0; i < onlyValues.length; i++ )
+	{
+	    if ( k < j && k < onlyValues.length ) k = onlyValues.length;
+	}   
+
+	var maxValue = k;
+
+        // create color palette function
+        var paletteScale = d3.scale.linear()
+                .domain([minValue,maxValue])
+                .range(["#EFEFFF","#02386F"]); // blue color
+        // fill dataset in appropriate format
+        country_counts.forEach(function(item){ //
+            var iso   = item["CC"],
+                value = item["Count"];
+            dataset[iso] = { fillColor: paletteScale(value), count: value };
+        });
+
+	// Draw map
+        new Datamap({
+            element: document.getElementById('incident_map'),
+            projection: 'mercator', // big world map
+            height: 500,
+	    width: 500,
+            // countries not listed in dataset will be painted with this color
+            fills: { defaultFill: '#F5F5F5' },
+            data: dataset,
+            geographyConfig: {
+                borderColor: '#DEDEDE',
+                highlightBorderWidth: 2,
+                // don't change color on mouse hover
+                highlightFillColor: function(geo, data) {
+                    return geo['fillColor'] || 'F5F5F5';
+                },
+                // only change border
+                highlightBorderColor: '#B7B7B7',
+                // show desired information in tooltip
+                popupTemplate: function(geo, data) {
+                    // don't show tooltip if country don't present in dataset
+                    if (!data) { return ; }
+                    // tooltip content
+                    return ['<div class="hoverinfo">',
+                        '<strong>', geo.properties.name, '</strong>',
+                        '<br>Aircraft Incidents: <strong>', data.count, '</strong>',
+                        '</div>'].join('');
+                }
+            }
+        });
+
+     });
+
+  </script>
+  </body>
+</html>
+
